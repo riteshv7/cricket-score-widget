@@ -6,7 +6,7 @@ BUNDLE_DIR="${APP_NAME}.app"
 CONTENTS_DIR="${BUNDLE_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
 RESOURCES_DIR="${CONTENTS_DIR}/Resources"
-ICON_SOURCE="/Users/riteshverma/.gemini/antigravity/brain/1727ba99-1f49-4c6f-ad9b-afba288d580a/cricket_app_icon_1782503798093.png"
+ICON_SOURCE="/Users/riteshverma/.gemini/antigravity/scratch/MaidanAppIcon.png"
 
 echo "🧹 Cleaning previous build..."
 rm -rf "${BUNDLE_DIR}"

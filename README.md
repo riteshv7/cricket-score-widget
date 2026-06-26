@@ -1,5 +1,9 @@
 # Maidan
 
+<p align="center">
+  <img src="assets/MaidanAppIcon.png" alt="Maidan App Icon" width="128" style="border-radius: 28px;" />
+</p>
+
 A lightweight, premium macOS menu bar application that displays live cricket scores in real-time. The app runs completely in the background as a menu bar agent (no Dock icon) named **Maidan**, and is powered by the Highlightly Cricket API.
 
 <p align="center">
