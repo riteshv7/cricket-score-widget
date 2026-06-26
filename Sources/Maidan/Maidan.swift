@@ -112,6 +112,7 @@ struct SettingsView: View {
                     
                     TextField("Paste your Highlightly or RapidAPI key here", text: $apiKey)
                         .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
                         .frame(width: isInline ? 280 : 340)
                     
                     Text("If empty, falls back to key in Config.swift.")
@@ -215,6 +216,7 @@ struct SettingsView: View {
                     
                     TextField("Selected Teams (comma-separated)", text: $favoriteTeam)
                         .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
                         .frame(width: isInline ? 280 : 340)
                         .padding(.top, 2)
                 }
