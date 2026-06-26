@@ -89,4 +89,56 @@ class APIClient {
             rateLimitRemaining: rateLimitRemaining
         )
     }
+    
+    func fetchMatchDetail(id: String) async throws -> DetailedInfo {
+        // 1. Build URL
+        guard var urlComponents = URLComponents(string: Config.apiBaseURL) else {
+            throw URLError(.badURL)
+        }
+        
+        let cleanPath = urlComponents.path.hasSuffix("/") ? String(urlComponents.path.dropLast()) : urlComponents.path
+        urlComponents.path = cleanPath + "/matches/\(id)"
+        
+        guard let url = urlComponents.url else {
+            throw URLError(.badURL)
+        }
+        
+        // 2. Create Request
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        
+        // Headers
+        let storedKey = UserDefaults.standard.string(forKey: "apiKey") ?? ""
+        let activeKey = storedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Config.highlightlyAPIKey : storedKey
+        request.setValue(activeKey, forHTTPHeaderField: "x-rapidapi-key")
+        
+        if Config.useRapidAPI {
+            let host = URL(string: Config.apiBaseURL)?.host ?? "cricket-highlights-api.p.rapidapi.com"
+            request.setValue(host, forHTTPHeaderField: "x-rapidapi-host")
+        }
+        
+        // 3. Perform network call
+        let (data, response) = try await session.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        
+        // Check for HTTP errors
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let bodyString = String(data: data, encoding: .utf8) ?? ""
+            print("API Match Detail Error: HTTP Status \(httpResponse.statusCode). Response: \(bodyString)")
+            throw URLError(.badServerResponse)
+        }
+        
+        // 4. Decode API Response (detailed endpoint returns an array)
+        let decoder = JSONDecoder()
+        let detailedMatches = try decoder.decode([APIDetailedMatch].self, from: data)
+        
+        guard let detailedMatch = detailedMatches.first else {
+            throw URLError(.badServerResponse)
+        }
+        
+        return detailedMatch.toDetailedDomain()
+    }
 }

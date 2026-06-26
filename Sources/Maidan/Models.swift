@@ -24,6 +24,20 @@ struct Match: Codable, Identifiable {
     let innings: [Innings]      // home + away
     let state: MatchState
     let startTime: String
+    let detailedInfo: DetailedInfo?
+
+    func withDetailedInfo(_ info: DetailedInfo) -> Match {
+        return Match(
+            id: id,
+            name: name,
+            format: format,
+            statusText: statusText,
+            innings: innings,
+            state: state,
+            startTime: startTime,
+            detailedInfo: info
+        )
+    }
 
     /// Helper to find the active batting/live team's innings
     var activeInnings: Innings? {
@@ -301,6 +315,85 @@ struct Match: Codable, Identifiable {
         }
         return statusText
     }
+    
+    /// Calculates the projected final score in the 1st innings of limited-overs matches
+    var projectedScoreString: String? {
+        guard format != "TEST" && !isChase else { return nil }
+        guard let active = activeInnings else { return nil }
+        guard let runsVal = Match.parseRuns(from: active.scoreText) else { return nil }
+        guard let info = active.infoText else { return nil }
+        guard let oversVal = Match.parseOvers(from: info) else { return nil }
+        guard let limit = Match.parseOversLimit(from: info) else { return nil }
+        
+        let bowled = Match.ballsBowled(from: oversVal)
+        guard bowled > 3 else { return nil } // Need at least 4 balls bowled for a stable projection
+        
+        let crrVal = Double(runsVal) * 6.0 / Double(bowled)
+        let projected = Int(round(crrVal * Double(limit)))
+        return "Projected: ~\(projected) (at CRR \(String(format: "%.2f", crrVal)))"
+    }
+
+    /// Current Run Rate (numerical)
+    var currentRunRate: Double? {
+        guard let active = activeInnings else { return nil }
+        guard let runsVal = Match.parseRuns(from: active.scoreText) else { return nil }
+        guard let oversVal = active.infoText.flatMap({ Match.parseOvers(from: $0) }) else { return nil }
+        let bowled = Match.ballsBowled(from: oversVal)
+        guard bowled > 0 else { return nil }
+        return Double(runsVal) * 6.0 / Double(bowled)
+    }
+
+    /// Required Run Rate (numerical)
+    var requiredRunRate: Double? {
+        guard isChase, let targetVal = target else { return nil }
+        guard let active = activeInnings else { return nil }
+        let currentRuns = Match.parseRuns(from: active.scoreText) ?? 0
+        let runsNeeded = targetVal - currentRuns
+        
+        guard let info = active.infoText,
+              let oversVal = active.infoText.flatMap({ Match.parseOvers(from: $0) }),
+              let limit = Match.parseOversLimit(from: info) else { return nil }
+              
+        let totalBalls = limit * 6
+        let bowled = Match.ballsBowled(from: oversVal)
+        let ballsRemaining = max(0, totalBalls - bowled)
+        
+        guard ballsRemaining > 0 else { return nil }
+        return Double(runsNeeded) * 6.0 / Double(ballsRemaining)
+    }
+}
+
+struct DetailedInfo: Codable {
+    let venueName: String?
+    let venueCity: String?
+    let weatherStatus: String?
+    let weatherTemp: String?
+    
+    let homeWinProb: String?
+    let drawWinProb: String?
+    let awayWinProb: String?
+    
+    let activeBatsmen: [ActiveBatsman]
+    let activeBowlers: [ActiveBowler]
+}
+
+struct ActiveBatsman: Codable, Identifiable {
+    var id: String { name }
+    let name: String
+    let teamAbbreviation: String
+    let runs: Int
+    let balls: Int
+    let strikeRate: Double
+}
+
+struct ActiveBowler: Codable, Identifiable {
+    var id: String { name }
+    let name: String
+    let teamAbbreviation: String
+    let overs: Double
+    let wickets: Int
+    let runsConceded: Int
+    let economy: Double
 }
 
 
@@ -375,7 +468,8 @@ extension APIMatch {
             statusText: status,
             innings: [homeInnings, awayInnings],
             state: matchState,
-            startTime: startTime
+            startTime: startTime,
+            detailedInfo: nil
         )
     }
     
@@ -400,5 +494,173 @@ extension APIMatch {
         default:
             return .scheduled
         }
+    }
+}
+
+// MARK: - Detailed API Decodable Models
+
+struct APIDetailedMatch: Decodable {
+    let id: String
+    let format: String
+    let startTime: String
+    let homeTeam: APITeam
+    let awayTeam: APITeam
+    let league: APILeague?
+    let state: APIMatchState
+    let venue: APIVenue?
+    let forecast: APIForecast?
+    let predictions: APIPredictions?
+    let inplayData: APIInPlayData?
+}
+
+struct APIVenue: Decodable {
+    let name: String?
+    let city: String?
+    let country: String?
+}
+
+struct APIForecast: Decodable {
+    let status: String?
+    let temperature: String?
+}
+
+struct APIPredictions: Decodable {
+    let prematch: [APIPrediction]?
+    let live: [APIPrediction]?
+}
+
+struct APIPrediction: Decodable {
+    let type: String?
+    let probabilities: APIProbabilities?
+}
+
+struct APIProbabilities: Decodable {
+    let home: String?
+    let draw: String?
+    let away: String?
+}
+
+struct APIInPlayData: Decodable {
+    let bowlers: [APIInPlayBowler]?
+    let batsmen: [APIInPlayBatsman]?
+}
+
+struct APIInPlayBowler: Decodable {
+    let player: APIPlayerInfo?
+    let team: APITeam?
+}
+
+struct APIInPlayBatsman: Decodable {
+    let player: APIPlayerInfo?
+    let team: APITeam?
+}
+
+struct APIPlayerInfo: Decodable {
+    let name: String
+    let statistics: APIPlayerStats?
+}
+
+struct APIPlayerStats: Decodable {
+    let runs: Int?
+    let balls: Int?
+    let fours: Int?
+    let sixes: Int?
+    let strikeRate: Double?
+    
+    let overs: Double?
+    let wickets: Int?
+    let economy: Double?
+    let runsConceded: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case runs, balls, fours, sixes, strikeRate
+        case overs, wickets, economy
+        case runsConceded
+        case concededRuns
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.runs = try container.decodeIfPresent(Int.self, forKey: .runs)
+        self.balls = try container.decodeIfPresent(Int.self, forKey: .balls)
+        self.fours = try container.decodeIfPresent(Int.self, forKey: .fours)
+        self.sixes = try container.decodeIfPresent(Int.self, forKey: .sixes)
+        self.strikeRate = try container.decodeIfPresent(Double.self, forKey: .strikeRate)
+        self.overs = try container.decodeIfPresent(Double.self, forKey: .overs)
+        self.wickets = try container.decodeIfPresent(Int.self, forKey: .wickets)
+        self.economy = try container.decodeIfPresent(Double.self, forKey: .economy)
+        
+        // Decodes runsConceded from either runsConceded or concededRuns keys
+        if let rc = try container.decodeIfPresent(Int.self, forKey: .runsConceded) {
+            self.runsConceded = rc
+        } else {
+            self.runsConceded = try container.decodeIfPresent(Int.self, forKey: .concededRuns)
+        }
+    }
+}
+
+extension APIDetailedMatch {
+    func toDetailedDomain() -> DetailedInfo {
+        let venueName = venue?.name
+        let venueCity = venue?.city
+        let weatherStatus = forecast?.status
+        let weatherTemp = forecast?.temperature
+        
+        let liveProb = predictions?.live?.first?.probabilities ?? predictions?.prematch?.first?.probabilities
+        let homeWin = liveProb?.home
+        let drawWin = liveProb?.draw
+        let awayWin = liveProb?.away
+        
+        var domainBatsmen: [ActiveBatsman] = []
+        if let apiBatsmen = inplayData?.batsmen {
+            for b in apiBatsmen {
+                if let player = b.player {
+                    let runs = player.statistics?.runs ?? 0
+                    let balls = player.statistics?.balls ?? 0
+                    let sr = player.statistics?.strikeRate ?? 0.0
+                    let teamAbbr = b.team?.abbreviation ?? ""
+                    domainBatsmen.append(ActiveBatsman(
+                        name: player.name,
+                        teamAbbreviation: teamAbbr,
+                        runs: runs,
+                        balls: balls,
+                        strikeRate: sr
+                    ))
+                }
+            }
+        }
+        
+        var domainBowlers: [ActiveBowler] = []
+        if let apiBowlers = inplayData?.bowlers {
+            for b in apiBowlers {
+                if let player = b.player {
+                    let overs = player.statistics?.overs ?? 0.0
+                    let wickets = player.statistics?.wickets ?? 0
+                    let runs = player.statistics?.runsConceded ?? 0
+                    let econ = player.statistics?.economy ?? 0.0
+                    let teamAbbr = b.team?.abbreviation ?? ""
+                    domainBowlers.append(ActiveBowler(
+                        name: player.name,
+                        teamAbbreviation: teamAbbr,
+                        overs: overs,
+                        wickets: wickets,
+                        runsConceded: runs,
+                        economy: econ
+                    ))
+                }
+            }
+        }
+        
+        return DetailedInfo(
+            venueName: venueName,
+            venueCity: venueCity,
+            weatherStatus: weatherStatus,
+            weatherTemp: weatherTemp,
+            homeWinProb: homeWin,
+            drawWinProb: drawWin,
+            awayWinProb: awayWin,
+            activeBatsmen: domainBatsmen,
+            activeBowlers: domainBowlers
+        )
     }
 }

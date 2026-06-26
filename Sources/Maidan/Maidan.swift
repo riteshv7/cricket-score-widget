@@ -45,8 +45,8 @@ struct SettingsView: View {
     // Phase 6: Persist Favorite Team in UserDefaults via @AppStorage
     @AppStorage("favoriteTeam") private var favoriteTeam: String = ""
     
-    // Major Matches Filter Toggle
-    @AppStorage("filterMajorMatches") private var filterMajorMatches: Bool = true
+    // Match Feed Filter Mode (Phase 11)
+    @AppStorage("matchFilterMode") private var matchFilterMode: String = "major"
     
     // Menu Bar Customization Style
     @AppStorage("menuBarStyle") private var menuBarStyle: String = "compact"
@@ -75,19 +75,23 @@ struct SettingsView: View {
                 Divider()
                 
                 // Section 2: Match Feed Filter & Startup
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("Match Feed & Startup")
                         .font(.subheadline)
                         .fontWeight(.bold)
                     
-                    Toggle("Show Major Matches Only", isOn: $filterMajorMatches)
-                        .toggleStyle(.checkbox)
-                        .font(.subheadline)
+                    Picker("Feed Filter", selection: $matchFilterMode) {
+                        Text("All Matches").tag("all")
+                        Text("Major Matches").tag("major")
+                        Text("IPL Only").tag("ipl")
+                        Text("International Only").tag("intl")
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: isInline ? 280 : 340)
                     
-                    Text("Only shows IPL, India matches, and international fixtures between major teams.")
+                    Text("Filter matches by league/level to keep your feed clean.")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                        .lineLimit(2)
                     
                     Toggle("Launch at Login", isOn: $launchAtLogin)
                         .toggleStyle(.checkbox)
@@ -178,6 +182,9 @@ struct DropdownView: View {
     
     // New state to toggle inline Settings panel
     @State private var showSettings: Bool = false
+    
+    // Keyboard focus state (Phase 11)
+    @FocusState private var isFocused: Bool
     
     var body: some View {
         let liveMatchesList = matchService.allMatches.filter { $0.state == .live || $0.state == .onBreak }
@@ -286,6 +293,54 @@ struct DropdownView: View {
                         }
                     }
                     
+                    // Projected Score (Phase 10)
+                    if let projected = match.projectedScoreString {
+                        Text(projected)
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundColor(.secondary)
+                            .padding(.top, 2)
+                    }
+                    
+                    // CRR vs RRR comparison (Phase 10)
+                    if let crr = match.currentRunRate, let rrr = match.requiredRunRate {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack {
+                                        Text("Current RR")
+                                            .font(.system(size: 9, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                        Spacer()
+                                        Text(String(format: "%.2f", crr))
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.green)
+                                    }
+                                    ProgressView(value: min(crr, 15.0), total: 15.0)
+                                        .progressViewStyle(.linear)
+                                        .tint(.green)
+                                        .scaleEffect(x: 1, y: 0.5, anchor: .center)
+                                }
+                                
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack {
+                                        Text("Required RR")
+                                            .font(.system(size: 9, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                        Spacer()
+                                        Text(String(format: "%.2f", rrr))
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(crr >= rrr ? .green : .orange)
+                                    }
+                                    ProgressView(value: min(rrr, 15.0), total: 15.0)
+                                        .progressViewStyle(.linear)
+                                        .tint(crr >= rrr ? .green : .orange)
+                                        .scaleEffect(x: 1, y: 0.5, anchor: .center)
+                                }
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                    
                     // Hero Number Block (Chase status, CRR, or completed report)
                     Text(match.heroNumberString)
                         .font(.system(.body, design: .rounded))
@@ -303,6 +358,159 @@ struct DropdownView: View {
                         .foregroundColor(.secondary)
                         .italic()
                         .padding(.top, 2)
+                    
+                    // Phase 9: Live Crease Section (Active Batters & Bowler)
+                    if let details = match.detailedInfo, (!details.activeBatsmen.isEmpty || !details.activeBowlers.isEmpty) {
+                        VStack(alignment: .leading, spacing: 5) {
+                            // Active Batsmen
+                            ForEach(details.activeBatsmen) { batsman in
+                                HStack(spacing: 6) {
+                                    Image(systemName: "cricket.ball")
+                                        .foregroundColor(.secondary)
+                                        .font(.system(size: 10))
+                                    
+                                    Text(batsman.name)
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .lineLimit(1)
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(batsman.runs) (\(batsman.balls))")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                    
+                                    Text("SR: \(Int(batsman.strikeRate))")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 45, alignment: .trailing)
+                                }
+                            }
+                            
+                            if !details.activeBatsmen.isEmpty && !details.activeBowlers.isEmpty {
+                                Divider()
+                                    .opacity(0.4)
+                            }
+                            
+                            // Active Bowlers
+                            ForEach(details.activeBowlers) { bowler in
+                                HStack(spacing: 6) {
+                                    Image(systemName: "figure.cricket")
+                                        .foregroundColor(.secondary)
+                                        .font(.system(size: 10))
+                                    
+                                    Text(bowler.name)
+                                        .font(.subheadline)
+                                        .lineLimit(1)
+                                    
+                                    Spacer()
+                                    
+                                    Text("\(bowler.wickets)/\(bowler.runsConceded)")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                    
+                                    Text("\(String(format: "%.1f", bowler.overs)) ov")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 45, alignment: .trailing)
+                                }
+                            }
+                        }
+                        .padding(8)
+                        .background(Color.primary.opacity(0.04))
+                        .cornerRadius(6)
+                        .padding(.top, 4)
+                    }
+                    
+                    // Phase 9: Live Win Probability Bar
+                    if let details = match.detailedInfo,
+                       let homeProbStr = details.homeWinProb,
+                       let awayProbStr = details.awayWinProb,
+                       let homeProb = parsePercent(homeProbStr),
+                       let awayProb = parsePercent(awayProbStr) {
+                        
+                        let drawProb = parsePercent(details.drawWinProb) ?? 0.0
+                        let total = homeProb + awayProb + drawProb
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("Win Probability")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                
+                                let homeAbbr = match.innings.first?.teamShortName ?? "HOME"
+                                let awayAbbr = match.innings.last?.teamShortName ?? "AWAY"
+                                
+                                if drawProb > 0 {
+                                    Text("\(homeAbbr) \(Int(homeProb))% · Draw \(Int(drawProb))% · \(awayAbbr) \(Int(awayProb))%")
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    Text("\(homeAbbr) \(Int(homeProb))% · \(awayAbbr) \(Int(awayProb))%")
+                                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            
+                            // Stacked Progress Bar representing percentages
+                            GeometryReader { geo in
+                                HStack(spacing: 0) {
+                                    Color.green
+                                        .frame(width: total > 0 ? geo.size.width * CGFloat(homeProb / total) : 0)
+                                    if drawProb > 0 {
+                                        Color.gray.opacity(0.7)
+                                            .frame(width: total > 0 ? geo.size.width * CGFloat(drawProb / total) : 0)
+                                    }
+                                    Color.blue
+                                        .frame(width: total > 0 ? geo.size.width * CGFloat(awayProb / total) : 0)
+                                }
+                                .cornerRadius(2.5)
+                            }
+                            .frame(height: 5)
+                        }
+                        .padding(.top, 4)
+                    }
+                    
+                    // Phase 9: Venue & Weather Footer
+                    if let details = match.detailedInfo, let venueName = details.venueName {
+                        let city = details.venueCity ?? ""
+                        let weatherStatus = details.weatherStatus ?? ""
+                        let weatherTemp = details.weatherTemp ?? ""
+                        
+                        let weatherIcon: String = {
+                            let desc = weatherStatus.lowercased()
+                            if desc.contains("rain") || desc.contains("drizzle") || desc.contains("shower") {
+                                return "🌧️"
+                            } else if desc.contains("cloud") || desc.contains("overcast") {
+                                return "☁️"
+                            } else if desc.contains("sun") || desc.contains("clear") || desc.contains("sunny") {
+                                return "☀️"
+                            } else {
+                                return "⛅"
+                            }
+                        }()
+                        
+                        HStack(spacing: 4) {
+                            Image(systemName: "mappin.and.ellipse")
+                                .foregroundColor(.secondary)
+                                .font(.system(size: 9))
+                            
+                            Text("\(venueName)\(!city.isEmpty ? ", \(city)" : "")")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                            
+                            Spacer()
+                            
+                            if !weatherStatus.isEmpty || !weatherTemp.isEmpty {
+                                Text("\(weatherIcon) \(weatherTemp)")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.top, 6)
+                    }
                     
                 } else {
                     // Loading / Empty State / No Key State
@@ -449,7 +657,21 @@ struct DropdownView: View {
         }
         .padding(16)
         .frame(width: 345)
+        .focusable()
+        .focused($isFocused)
+        .focusEffectDisabled()
+        .onKeyPress { keyPress in
+            if keyPress.key == .leftArrow || keyPress.key == .upArrow {
+                cycleSelectedMatch(forward: false)
+                return .handled
+            } else if keyPress.key == .rightArrow || keyPress.key == .downArrow {
+                cycleSelectedMatch(forward: true)
+                return .handled
+            }
+            return .ignored
+        }
         .onAppear {
+            isFocused = true
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -527,6 +749,26 @@ struct DropdownView: View {
         }
     }
     
+    private func cycleSelectedMatch(forward: Bool) {
+        let list = matchService.allMatches.filter { $0.state == .live || $0.state == .onBreak } +
+                   matchService.allMatches.filter { $0.state == .finished } +
+                   matchService.allMatches.filter { $0.state == .scheduled }
+        guard !list.isEmpty else { return }
+        
+        let currentIndex = list.firstIndex(where: { $0.id == selectedMatchID })
+        let nextIndex: Int
+        if let idx = currentIndex {
+            if forward {
+                nextIndex = (idx + 1) % list.count
+            } else {
+                nextIndex = (idx - 1 + list.count) % list.count
+            }
+        } else {
+            nextIndex = 0
+        }
+        selectedMatchID = list[nextIndex].id
+    }
+    
     private func scoresString(for match: Match) -> String {
         let home = match.innings.first
         let away = match.innings.last
@@ -560,6 +802,12 @@ struct DropdownView: View {
         displayFormatter.timeStyle = .short
         displayFormatter.timeZone = TimeZone.current
         return displayFormatter.string(from: validDate)
+    }
+    
+    private func parsePercent(_ percentStr: String?) -> Double? {
+        guard let s = percentStr else { return nil }
+        let clean = s.replacingOccurrences(of: "%", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return Double(clean)
     }
 }
 

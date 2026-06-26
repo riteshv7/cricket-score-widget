@@ -12,12 +12,18 @@ A lightweight, premium macOS menu bar application that displays live cricket sco
 
 ## Features
 
-- **Live Ticker**: Displays a short live score directly in the macOS menu bar (e.g., `IND-A 398/5` or `SL-E · In play` when scoreless).
-- **Today's Matches View**: A scrollable list of today's matches grouped into **Live**, **Finished**, and **Upcoming** sections. Select any match from the list to immediately switch the menu bar and details view to that match.
-- **Menu Bar Style Customization**: Choose between **Full**, **Compact**, or **Minimal** styles to control the level of detail displayed in your menu bar.
-- **Wicket & Match Notifications**: Delivers native macOS system notifications on key events, such as when a wicket falls (showing updated score), when a match ends, or when your favorite team starts playing.
-- **Scorecard Click-Through**: Click on the match title inside the dropdown to instantly open a full scorecard search on Cricbuzz/ESPNcricinfo in your default browser.
+- **Live Ticker**: Displays a short live score directly in the macOS menu bar (e.g., `IND 142/3` or `SL · In play` when scoreless).
+- **Live Crease Statistics**: Shows active batters (runs, balls, strike rates) with a custom cricket bat emoji indicating who is on strike, alongside the current bowler's active figures (overs, runs, wickets, economy) updated in real time.
+- **Live Win Probability**: An elegant, stacked progress bar displaying the live win percentages for home, draw, and away outcomes (e.g., `IND 69% · Draw 0% · SL 31%`).
+- **Venue & Weather Metadata**: Displays the active stadium name, city, and current weather forecast (e.g., `Liberty Stadium, Swansea · ⛅ 12°C`) at the bottom of the dropdown.
+- **Projected Scores & Run-Rate Matchups**: Calculates and displays the first-innings projected score (e.g., `Projected: ~178`) for limited-overs matches, alongside side-by-side current run rate (CRR) and required run rate (RRR) visual comparison bars during chases.
+- **Today's Matches View**: A scrollable list of today's matches grouped into **Live**, **Finished**, and **Upcoming** sections. Select any match from the list to immediately switch the menu bar and details view.
+- **Match Feed Customization**: Select between **All Matches**, **Major Matches Only**, **IPL Only**, or **International Only** filters in the settings panel to keep your feed clean.
+- **Rich Local Notifications**: Delivers native macOS system notifications on key events—wickets, boundaries (4s and 6s), innings breaks, close finishes (e.g., when entering the last 3 overs needing under 8 runs per over), and match results.
+- **Scorecard Click-Through**: Click on any match title inside the dropdown to instantly open a full scorecard search on Cricbuzz/ESPNcricinfo in your default browser.
+- **Keyboard Navigation**: Press Left/Right or Up/Down arrow keys while the dropdown is open to cycle through today's matches instantly.
 - **Launch at Login**: Easily toggle launch-at-login from the settings panel so the app starts automatically when your Mac boots.
+- **Menu Bar Style Customization**: Choose between **Full**, **Compact**, or **Minimal** styles to control the level of detail displayed in your menu bar.
 - **Adaptive & Sleep-Aware Polling**: Intelligently scales polling rates based on match state, backs off when Low Power Mode is active, and pauses completely when your Mac sleeps to conserve API quota and battery.
 - **Zero Dock Clutter**: Runs purely in the menu bar as an accessory agent with no Dock presence.
 

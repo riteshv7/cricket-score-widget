@@ -26,7 +26,7 @@ class MatchService {
     private var lastSelectedMatchID: String = ""
     private var lastFavoriteTeam: String = ""
     private var lastActiveInterval: TimeInterval = 120.0
-    private var lastFilterMajor: Bool = true
+    private var lastFilterMode: String = "major"
     private var lastMenuBarStyle: String = "compact"
     private var lastLaunchAtLogin: Bool = false
     private var lastFetchedRawMatches: [APIMatch] = []
@@ -37,7 +37,7 @@ class MatchService {
         self.lastApiKey = currentApiKey()
         self.lastSelectedMatchID = currentSelectedMatchID()
         self.lastFavoriteTeam = currentFavoriteTeam()
-        self.lastFilterMajor = UserDefaults.standard.object(forKey: "filterMajorMatches") as? Bool ?? true
+        self.lastFilterMode = UserDefaults.standard.string(forKey: "matchFilterMode") ?? "major"
         self.lastMenuBarStyle = UserDefaults.standard.string(forKey: "menuBarStyle") ?? "compact"
         self.lastLaunchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
         self.lastActiveInterval = calculateActiveInterval()
@@ -185,7 +185,7 @@ class MatchService {
         let newKey = currentApiKey()
         let newSelectedID = currentSelectedMatchID()
         let newFavTeam = currentFavoriteTeam()
-        let newFilterMajor = UserDefaults.standard.object(forKey: "filterMajorMatches") as? Bool ?? true
+        let newFilterMode = UserDefaults.standard.string(forKey: "matchFilterMode") ?? "major"
         let newStyle = UserDefaults.standard.string(forKey: "menuBarStyle") ?? "compact"
         let newLaunchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
         
@@ -214,8 +214,8 @@ class MatchService {
             needsProcess = true
         }
         
-        if newFilterMajor != lastFilterMajor {
-            lastFilterMajor = newFilterMajor
+        if newFilterMode != lastFilterMode {
+            lastFilterMode = newFilterMode
             needsProcess = true
         }
         
@@ -293,7 +293,33 @@ class MatchService {
         
         do {
             let result = try await client.fetchMatches()
-            processMatches(result.rawMatches, rateLimitRemaining: result.rateLimitRemaining)
+            
+            // Lazy detailed fetch for the selected active match to conserve quota
+            let selectedId = currentSelectedMatchID()
+            let favTeam = currentFavoriteTeam()
+            
+            let apiMatchesToUse = filterMatches(result.rawMatches)
+            
+            let selectionResult = MatchSelector.selectMatch(
+                from: apiMatchesToUse,
+                selectedMatchID: selectedId,
+                favoriteTeam: favTeam
+            )
+            
+            var detailedInfo: DetailedInfo? = nil
+            if let selectedMatch = selectionResult.selectedMatch {
+                let isLiveOrOnBreak = selectedMatch.state == .live || selectedMatch.state == .onBreak
+                
+                if isLiveOrOnBreak {
+                    do {
+                        detailedInfo = try await client.fetchMatchDetail(id: selectedMatch.id)
+                    } catch {
+                        print("MatchService: Detailed fetch failed for match \(selectedMatch.id): \(error)")
+                    }
+                }
+            }
+            
+            processMatches(result.rawMatches, rateLimitRemaining: result.rateLimitRemaining, activeMatchDetail: detailedInfo)
         } catch {
             print("MatchService: Fetch failed with error: \(error)")
             
@@ -307,29 +333,14 @@ class MatchService {
     }
     
     /// Processes and filters the raw matches, then updates the observable state on the MainActor
-    func processMatches(_ rawMatches: [APIMatch], rateLimitRemaining: Int?) {
+    func processMatches(_ rawMatches: [APIMatch], rateLimitRemaining: Int?, activeMatchDetail: DetailedInfo? = nil) {
         self.lastFetchedRawMatches = rawMatches
         
-        // 1. Filter raw matches based on the major matches setting
-        let filterEnabled = UserDefaults.standard.object(forKey: "filterMajorMatches") as? Bool ?? true
-        let apiMatchesToUse: [APIMatch]
-        if filterEnabled {
-            apiMatchesToUse = rawMatches.filter { apiMatch in
-                MatchService.isMajorMatch(
-                    homeName: apiMatch.homeTeam.name,
-                    homeAbbr: apiMatch.homeTeam.abbreviation,
-                    awayName: apiMatch.awayTeam.name,
-                    awayAbbr: apiMatch.awayTeam.abbreviation,
-                    leagueName: apiMatch.league?.name ?? ""
-                )
-            }
-        } else {
-            apiMatchesToUse = rawMatches
-        }
+        let apiMatchesToUse = filterMatches(rawMatches)
         
         let liveAPIMatches = apiMatchesToUse.filter { MatchSelector.classify($0.state.description) == .live }
-        let domainLiveMatches = liveAPIMatches.map { $0.toDomain() }
-        let domainAllMatches = apiMatchesToUse.map { $0.toDomain() }
+        var domainLiveMatches = liveAPIMatches.map { $0.toDomain() }
+        var domainAllMatches = apiMatchesToUse.map { $0.toDomain() }
         
         let selectedId = currentSelectedMatchID()
         let favTeam = currentFavoriteTeam()
@@ -341,7 +352,19 @@ class MatchService {
         )
         
         // Compare with previous state to trigger notifications before updating currentMatch
-        let newMatch = selectionResult.selectedMatch
+        var newMatch = selectionResult.selectedMatch
+        
+        if let detail = activeMatchDetail, let activeMatchVal = newMatch {
+            let enrichedMatch = activeMatchVal.withDetailedInfo(detail)
+            newMatch = enrichedMatch
+            
+            if let index = domainLiveMatches.firstIndex(where: { $0.id == enrichedMatch.id }) {
+                domainLiveMatches[index] = enrichedMatch
+            }
+            if let index = domainAllMatches.firstIndex(where: { $0.id == enrichedMatch.id }) {
+                domainAllMatches[index] = enrichedMatch
+            }
+        }
         if let newMatch = newMatch {
             if let oldMatch = self.currentMatch, oldMatch.id == newMatch.id {
                 // 1. Wicket Check
@@ -359,7 +382,77 @@ class MatchService {
                     }
                 }
                 
-                // 2. Match Completed Check
+                // 2. Boundary Alerts (4/6) (Phase 10)
+                for newInnings in newMatch.innings {
+                    if let oldInnings = oldMatch.innings.first(where: { $0.teamShortName == newInnings.teamShortName }) {
+                        if let newRuns = Match.parseRuns(from: newInnings.scoreText),
+                           let oldRuns = Match.parseRuns(from: oldInnings.scoreText) {
+                            let diff = newRuns - oldRuns
+                            if diff == 4 {
+                                sendNotification(
+                                    title: "FOUR! 🏏🔥",
+                                    body: "Boundary! \(newInnings.teamShortName) hits a 4. Now \(newInnings.scoreText) (\(newMatch.name))"
+                                )
+                            } else if diff == 6 {
+                                sendNotification(
+                                    title: "SIX! 🏏🚀",
+                                    body: "Maximum! \(newInnings.teamShortName) hits a 6. Now \(newInnings.scoreText) (\(newMatch.name))"
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                // 3. Innings Break Check (Phase 10)
+                let oldStatus = oldMatch.statusText.lowercased()
+                let newStatus = newMatch.statusText.lowercased()
+                let isOldBreak = oldStatus.contains("innings break") || oldStatus.contains("break")
+                let isNewBreak = newStatus.contains("innings break") || newStatus.contains("break")
+                if !isOldBreak && isNewBreak {
+                    sendNotification(
+                        title: "Innings Break 🏏",
+                        body: "\(newMatch.name): \(newMatch.statusText)"
+                    )
+                }
+                
+                // 4. Close Finish Check (Phase 10)
+                if newMatch.isChase {
+                    if let active = newMatch.activeInnings,
+                       let runs = Match.parseRuns(from: active.scoreText),
+                       let targetVal = newMatch.target,
+                       let info = active.infoText,
+                       let oversVal = Match.parseOvers(from: info),
+                       let limit = Match.parseOversLimit(from: info) {
+                        
+                        let totalBalls = limit * 6
+                        let bowled = Match.ballsBowled(from: oversVal)
+                        let ballsRemaining = max(0, totalBalls - bowled)
+                        let runsNeeded = targetVal - runs
+                        
+                        let isCloseFinish = ballsRemaining > 0 && ballsRemaining <= 18 && runsNeeded > 0 && runsNeeded <= 24
+                        
+                        var wasCloseFinishBefore = false
+                        if let oldActive = oldMatch.activeInnings,
+                           let oldRuns = Match.parseRuns(from: oldActive.scoreText),
+                           let oldInfo = oldActive.infoText,
+                           let oldOvers = Match.parseOvers(from: oldInfo) {
+                            
+                            let oldBowled = Match.ballsBowled(from: oldOvers)
+                            let oldBallsRemaining = max(0, totalBalls - oldBowled)
+                            let oldRunsNeeded = targetVal - oldRuns
+                            wasCloseFinishBefore = oldBallsRemaining > 0 && oldBallsRemaining <= 18 && oldRunsNeeded > 0 && oldRunsNeeded <= 24
+                        }
+                        
+                        if isCloseFinish && !wasCloseFinishBefore {
+                            sendNotification(
+                                title: "TENSE FINISH! 🚨🏏",
+                                body: "\(newMatch.name): Need \(runsNeeded) runs off \(ballsRemaining) balls!"
+                            )
+                        }
+                    }
+                }
+                
+                // 5. Match Completed Check
                 if oldMatch.state != .finished && newMatch.state == .finished {
                     sendNotification(
                         title: "Match Finished 🏆",
@@ -430,8 +523,8 @@ class MatchService {
         }
     }
     
-    /// Static helper to determine if a match is a major match (IPL, India game, or major international fixture)
-    static func isMajorMatch(
+    /// Static helper to check if a match is an IPL match or involving IPL franchises
+    static func isIPLMatch(
         homeName: String, homeAbbr: String,
         awayName: String, awayAbbr: String,
         leagueName: String
@@ -440,28 +533,29 @@ class MatchService {
         let away = awayName.lowercased()
         let league = leagueName.lowercased()
         
-        // 1. India games (National, A, Women, U19, etc.)
-        if home.contains("india") || away.contains("india") ||
-           homeAbbr.hasPrefix("IND") || awayAbbr.hasPrefix("IND") {
-            return true
-        }
+        return league.contains("ipl") || league.contains("premier league") || league.contains("indian premier") ||
+               home.contains("indians") || away.contains("indians") || // MI
+               home.contains("super kings") || away.contains("super kings") || // CSK
+               home.contains("challengers") || away.contains("challengers") || // RCB
+               home.contains("knight riders") || away.contains("knight riders") || // KKR
+               home.contains("capitals") || away.contains("capitals") || // DC
+               home.contains("royals") || away.contains("royals") || // RR
+               home.contains("kings") || away.contains("kings") || // PBKS
+               home.contains("sunrisers") || away.contains("sunrisers") || // SRH
+               home.contains("titans") || away.contains("titans") || // GT
+               home.contains("super giants") || away.contains("super giants") // LSG
+    }
+    
+    /// Static helper to check if a match is an International match between major national teams
+    static func isInternationalMatch(
+        homeName: String, homeAbbr: String,
+        awayName: String, awayAbbr: String,
+        leagueName: String
+    ) -> Bool {
+        let home = homeName.lowercased()
+        let away = awayName.lowercased()
+        let league = leagueName.lowercased()
         
-        // 2. IPL games
-        if league.contains("ipl") || league.contains("premier league") || league.contains("indian premier") ||
-           home.contains("indians") || away.contains("indians") || // MI
-           home.contains("super kings") || away.contains("super kings") || // CSK
-           home.contains("challengers") || away.contains("challengers") || // RCB
-           home.contains("knight riders") || away.contains("knight riders") || // KKR
-           home.contains("capitals") || away.contains("capitals") || // DC
-           home.contains("royals") || away.contains("royals") || // RR
-           home.contains("kings") || away.contains("kings") || // PBKS
-           home.contains("sunrisers") || away.contains("sunrisers") || // SRH
-           home.contains("titans") || away.contains("titans") || // GT
-           home.contains("super giants") || away.contains("super giants") { // LSG
-            return true
-        }
-        
-        // 3. International Men's and Women's Games (between major national teams)
         let nationalTeams = [
             "australia", "england", "new zealand", "south africa", "pakistan",
             "west indies", "sri lanka", "bangladesh", "zimbabwe", "ireland",
@@ -480,7 +574,6 @@ class MatchService {
             "UGA", "KEN"
         ]
         
-        // Check if either team name matches a national team
         let isHomeNational = nationalTeams.contains { home.contains($0) } || nationalAbbrs.contains { homeAbbr.uppercased().hasPrefix($0) }
         let isAwayNational = nationalTeams.contains { away.contains($0) } || nationalAbbrs.contains { awayAbbr.uppercased().hasPrefix($0) }
         
@@ -488,7 +581,6 @@ class MatchService {
             return true
         }
         
-        // If the league is clearly an international tour or cup
         if league.contains("world cup") || league.contains("asia cup") ||
            league.contains("champions trophy") || league.contains("ashes") ||
            league.contains("test championship") || league.contains("bilateral") ||
@@ -497,6 +589,77 @@ class MatchService {
         }
         
         return false
+    }
+    
+    /// Static helper to determine if a match is a major match (IPL, India game, or major international fixture)
+    static func isMajorMatch(
+        homeName: String, homeAbbr: String,
+        awayName: String, awayAbbr: String,
+        leagueName: String
+    ) -> Bool {
+        let home = homeName.lowercased()
+        let away = awayName.lowercased()
+        let homeAbbrUpper = homeAbbr.uppercased()
+        let awayAbbrUpper = awayAbbr.uppercased()
+        
+        // 1. India games (National, A, Women, U19, etc.)
+        if home.contains("india") || away.contains("india") ||
+           homeAbbrUpper.hasPrefix("IND") || awayAbbrUpper.hasPrefix("IND") {
+            return true
+        }
+        
+        // 2. IPL games
+        if isIPLMatch(homeName: homeName, homeAbbr: homeAbbr, awayName: awayName, awayAbbr: awayAbbr, leagueName: leagueName) {
+            return true
+        }
+        
+        // 3. International Men's and Women's Games
+        if isInternationalMatch(homeName: homeName, homeAbbr: homeAbbr, awayName: awayName, awayAbbr: awayAbbr, leagueName: leagueName) {
+            return true
+        }
+        
+        return false
+    }
+    
+    /// Helper to filter raw matches based on the current matchFilterMode setting in UserDefaults
+    private func filterMatches(_ matches: [APIMatch]) -> [APIMatch] {
+        let filterMode = UserDefaults.standard.string(forKey: "matchFilterMode") ?? "major"
+        switch filterMode {
+        case "all":
+            return matches
+        case "ipl":
+            return matches.filter { apiMatch in
+                MatchService.isIPLMatch(
+                    homeName: apiMatch.homeTeam.name,
+                    homeAbbr: apiMatch.homeTeam.abbreviation,
+                    awayName: apiMatch.awayTeam.name,
+                    awayAbbr: apiMatch.awayTeam.abbreviation,
+                    leagueName: apiMatch.league?.name ?? ""
+                )
+            }
+        case "intl":
+            return matches.filter { apiMatch in
+                MatchService.isInternationalMatch(
+                    homeName: apiMatch.homeTeam.name,
+                    homeAbbr: apiMatch.homeTeam.abbreviation,
+                    awayName: apiMatch.awayTeam.name,
+                    awayAbbr: apiMatch.awayTeam.abbreviation,
+                    leagueName: apiMatch.league?.name ?? ""
+                )
+            }
+        case "major":
+            fallthrough
+        default:
+            return matches.filter { apiMatch in
+                MatchService.isMajorMatch(
+                    homeName: apiMatch.homeTeam.name,
+                    homeAbbr: apiMatch.homeTeam.abbreviation,
+                    awayName: apiMatch.awayTeam.name,
+                    awayAbbr: apiMatch.awayTeam.abbreviation,
+                    leagueName: apiMatch.league?.name ?? ""
+                )
+            }
+        }
     }
     
     // MARK: - User Notifications & Launch at Login Helpers
