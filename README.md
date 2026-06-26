@@ -1,6 +1,6 @@
-# Cricket Menu Bar Widget
+# Maidan
 
-A lightweight, premium macOS menu bar application that displays live cricket scores in real-time. The app runs completely in the background as a menu bar agent (no Dock icon) and is powered by the Highlightly Cricket API.
+A lightweight, premium macOS menu bar application that displays live cricket scores in real-time. The app runs completely in the background as a menu bar agent (no Dock icon) named **Maidan**, and is powered by the Highlightly Cricket API.
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS%2014+-blue.svg" alt="Platform: macOS 14+">
@@ -43,9 +43,9 @@ You can obtain a free API key (100 requests/day) from either of these platforms:
 1. Clone this repository to your local machine.
 2. Duplicate the configuration template:
    ```bash
-   cp "Sources/cricket score widget/Config.example.swift" "Sources/cricket score widget/Config.swift"
+   cp "Sources/Maidan/Config.example.swift" "Sources/Maidan/Config.swift"
    ```
-3. Open the newly created `Sources/cricket score widget/Config.swift` file:
+3. Open the newly created `Sources/Maidan/Config.swift` file:
    - Paste your API key into `highlightlyAPIKey`.
    - **If using RapidAPI**: Set `useRapidAPI = true` and ensure `apiBaseURL` is set to `"https://cricket-highlights-api.p.rapidapi.com"`.
    - **If using Highlightly Direct**: Leave `useRapidAPI = false` and ensure `apiBaseURL` is set to `"https://cricket.highlightly.net"`.
@@ -60,9 +60,9 @@ You can compile and package the widget into a native, standalone macOS `.app` bu
 ```
 
 Upon successful compilation:
-- A double-clickable `Cricket Score.app` bundle will be created in the root folder.
+- A double-clickable `Maidan.app` bundle will be created in the root folder.
 - Simply double-click the app to launch it natively.
-- Drag `Cricket Score.app` to your `/Applications` folder to install it permanently.
+- Drag `Maidan.app` to your `/Applications` folder to install it permanently.
 
 *Note: For quick developer testing, you can still run `./run.sh` to compile and run the executable directly in the terminal background.*
 

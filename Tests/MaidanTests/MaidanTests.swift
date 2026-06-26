@@ -1,5 +1,5 @@
 import Testing
-@testable import cricket_score_widget
+@testable import Maidan
 
 @Test func example() async throws {
     // Write your test here and use APIs like `#expect(...)` to check expected conditions.

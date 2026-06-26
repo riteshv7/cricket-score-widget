@@ -6,9 +6,9 @@ DerivedData/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
-/Sources/cricket score widget/Config.swift
-/cricket_score_widget
-/Cricket Score.app/
+/Sources/Maidan/Config.swift
+/Maidan
+/Maidan.app/
 *.iconset/
 *.icns
 widget.log

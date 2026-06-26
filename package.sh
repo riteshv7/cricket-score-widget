@@ -1,7 +1,7 @@
 #!/bin/bash
-# Package the Cricket Score widget as a standalone macOS .app bundle
+# Package the Maidan widget as a standalone macOS .app bundle
 
-APP_NAME="Cricket Score"
+APP_NAME="Maidan"
 BUNDLE_DIR="${APP_NAME}.app"
 CONTENTS_DIR="${BUNDLE_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
@@ -38,12 +38,12 @@ iconutil -c icns AppIcon.iconset -o "${RESOURCES_DIR}/AppIcon.icns"
 rm -rf AppIcon.iconset
 
 echo "💻 Compiling Swift source files..."
-swiftc "Sources/cricket score widget/Config.swift" \
-       "Sources/cricket score widget/Models.swift" \
-       "Sources/cricket score widget/APIClient.swift" \
-       "Sources/cricket score widget/MatchSelector.swift" \
-       "Sources/cricket score widget/MatchService.swift" \
-       "Sources/cricket score widget/cricket_score_widget.swift" \
+swiftc "Sources/Maidan/Config.swift" \
+       "Sources/Maidan/Models.swift" \
+       "Sources/Maidan/APIClient.swift" \
+       "Sources/Maidan/MatchSelector.swift" \
+       "Sources/Maidan/MatchService.swift" \
+       "Sources/Maidan/Maidan.swift" \
        -o "${MACOS_DIR}/${APP_NAME}"
 
 if [ $? -ne 0 ]; then
@@ -62,7 +62,7 @@ cat <<EOF > "${CONTENTS_DIR}/Info.plist"
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
-    <string>com.riteshv.cricket-score</string>
+    <string>com.riteshv.maidan</string>
     <key>CFBundleName</key>
     <string>${APP_NAME}</string>
     <key>CFBundlePackageType</key>

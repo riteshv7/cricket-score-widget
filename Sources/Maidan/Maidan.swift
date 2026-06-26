@@ -9,7 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct CricketMenuBarApp: App {
+struct MaidanApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
     
     // Instantiate the polling service to fetch and manage live match data.
@@ -157,7 +157,10 @@ struct SettingsView: View {
             .padding(isInline ? 8 : 20)
         }
         .frame(width: isInline ? nil : 380, height: isInline ? nil : 480)
-        .navigationTitle("Cricket Widget Settings")
+        .navigationTitle("Maidan Settings")
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 }
 
@@ -186,7 +189,7 @@ struct DropdownView: View {
                 // Inline Settings Panel
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Text("Cricket Widget Settings")
+                        Text("Maidan Settings")
                             .font(.headline)
                             .fontWeight(.bold)
                             .foregroundColor(.primary)
@@ -429,6 +432,7 @@ struct DropdownView: View {
                     
                     // Settings Button (Toggles inline Settings panel)
                     Button("Settings…") {
+                        NSApp.activate(ignoringOtherApps: true)
                         withAnimation {
                             showSettings = true
                         }
@@ -445,6 +449,9 @@ struct DropdownView: View {
         }
         .padding(16)
         .frame(width: 345)
+        .onAppear {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
     
     // MARK: - Match Section Helper
