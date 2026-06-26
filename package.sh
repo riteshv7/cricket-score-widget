@@ -17,6 +17,10 @@ echo "🏗️ Creating .app directory structure..."
 mkdir -p "${MACOS_DIR}"
 mkdir -p "${RESOURCES_DIR}"
 
+echo "📦 Copying menu bar icon..."
+cp "Sources/Maidan/MaidanFieldIcon.png" "${RESOURCES_DIR}/"
+
+
 echo "🎨 Creating iconset and generating multi-size AppIcon.icns..."
 mkdir -p AppIcon.iconset
 

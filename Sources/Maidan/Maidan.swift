@@ -15,12 +15,41 @@ struct MaidanApp: App {
     // Instantiate the polling service to fetch and manage live match data.
     @State private var matchService = MatchService()
     
+    // Helper to load the custom cricket field template icon, adapting to Light/Dark modes.
+    private func loadMenuIcon() -> NSImage? {
+        // 1. Try to load from bundle resources (for packaged .app bundle)
+        if let image = NSImage(named: "MaidanFieldIcon") {
+            image.isTemplate = true
+            return image
+        }
+        
+        // 2. Try to load from the same directory as the executable (for run.sh / direct execution)
+        if let exePath = Bundle.main.executablePath {
+            let exeURL = URL(fileURLWithPath: exePath)
+            let localIconURL = exeURL.deletingLastPathComponent().appendingPathComponent("MaidanFieldIcon.png")
+            if FileManager.default.fileExists(atPath: localIconURL.path),
+               let image = NSImage(contentsOfFile: localIconURL.path) {
+                image.isTemplate = true
+                return image
+            }
+        }
+        
+        return nil
+    }
+    
     var body: some Scene {
         MenuBarExtra {
             DropdownView(matchService: matchService)
         } label: {
-            // The live score label shown directly in the macOS menu bar.
-            Text(matchService.menuBarTitle)
+            // The live score label and custom icon shown directly in the macOS menu bar.
+            HStack(spacing: 4) {
+                if let nsImage = loadMenuIcon() {
+                    Image(nsImage: nsImage)
+                } else {
+                    Image(systemName: "figure.cricket") // Fallback symbol
+                }
+                Text(matchService.menuBarTitle)
+            }
         }
         .menuBarExtraStyle(.window)
         
