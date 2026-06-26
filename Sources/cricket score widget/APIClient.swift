@@ -48,7 +48,9 @@ class APIClient {
         request.httpMethod = "GET"
         
         // Headers
-        request.setValue(Config.highlightlyAPIKey, forHTTPHeaderField: "x-rapidapi-key")
+        let storedKey = UserDefaults.standard.string(forKey: "apiKey") ?? ""
+        let activeKey = storedKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Config.highlightlyAPIKey : storedKey
+        request.setValue(activeKey, forHTTPHeaderField: "x-rapidapi-key")
         
         if Config.useRapidAPI {
             let host = URL(string: Config.apiBaseURL)?.host ?? "cricket-highlights-api.p.rapidapi.com"

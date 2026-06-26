@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://img.icons8.com/color/94/cricket.png" alt="Cricket Menu Bar Widget" width="100" height="100" />
   <h1>Cricket Menu Bar Widget</h1>
-  <p><b>A lightweight, native macOS menu bar application that displays live cricket scores in real-time, running completely in the background with zero dock clutter.</b></p>
+  <p><b>A native, premium macOS menu bar application that displays live cricket scores in real-time. Power-efficient, rate-limit aware, and featuring custom chase math and an interactive settings panel.</b></p>
 
   <p>
     <img src="https://img.shields.io/badge/macOS-14.0+-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS Sonoma+" />
@@ -23,16 +23,25 @@ Powered by the **Highlightly Cricket API** (supporting both direct endpoints and
 
 ## ⚡ Key Features
 
-- **Live Score Ticker**: Real-time status displayed directly in the macOS menu bar (e.g., `IND-A 398/5` or `SL-E · In play`).
-- **Smart Match Prioritization**: Auto-selects the most relevant active live match, prioritizing active scores. If no matches are live, it gracefully falls back to the most recently completed match.
-- **Dynamic Dropdown Status Card**: Clicking the widget reveals a detailed window featuring:
-  - Complete innings telemetry (runs, wickets, overs, targets).
-  - A pulsing green **LIVE** indicator for active matches.
-  - Contextual match commentary and status text (e.g., *"GT need 12 runs in 2 balls"*).
-  - API Rate-Limit indicator (`x-ratelimit-requests-remaining`) to monitor your quota.
-  - Manual **Refresh now** button with visual loading states.
-- **Quota Protection**: Intelligent polling interval (defaults to 120 seconds) to ensure you stay safely within the free API tier.
-- **Native & Lightweight**: Built using modern Apple frameworks with near-zero CPU and memory footprint.
+### 1. Interactive macOS Settings Panel
+Access a native preference panel (macOS `Settings` scene) to configure the widget on-the-fly:
+- **API Configuration**: Easily paste your Highlightly or RapidAPI key (stored securely in `UserDefaults` via `@AppStorage`, falling back to `Config.swift` if empty).
+- **Favorite Team Selection**: Input your favorite team (e.g. `India`, `GT`, `AUS`, `ENG`). The widget will automatically prioritize and auto-select live matches featuring this team.
+- **Refresh Speed**: Choose between **Relaxed (120s)** for free tiers, **Live (20s)** for paid plans, or **Death Overs (10s)** for ball-by-ball updates.
+
+### 2. Multi-Match Switcher
+When multiple matches are live simultaneously, a dedicated **Live Matches** section appears in the dropdown. You can view all active games and click on any match to manually override and pin that specific score to your system menu bar. Your selection persists automatically across app launches.
+
+### 3. Phase 4 Chase Math & Hero Number
+Displays a prominent, computed state card for live matches:
+- **Chasing Context**: Computes and displays: *"Need X runs (Y balls) · Required Run Rate: Z"*.
+- **First Innings Context**: Automatically calculates and displays the **Current Run Rate (CRR)**.
+- **Format Aware**: Gracefully bypasses run-rate calculations for Test matches and finished games.
+
+### 4. Smart Resource Management & Observers
+- **Sleep/Wake Watcher**: Automatically pauses API polling when your Mac goes to sleep and resumes upon waking, conserving network quota and battery life.
+- **Battery Saver**: Automatically detects when **Low Power Mode** is active, doubling the polling interval (minimum 120s) to conserve power.
+- **Adaptive Quota Guard**: Dynamically tightens polling (down to 10s on paid tier) during tight match finishes (e.g., <= 18 balls remaining or <= 24 runs needed) to catch every ball, returning to normal once the game concludes.
 
 ---
 
@@ -42,16 +51,17 @@ Powered by the **Highlightly Cricket API** (supporting both direct endpoints and
 .
 ├── Sources/
 │   └── cricket score widget/
-│       ├── main.swift              # App entry point, lifecycle, and MenuBarExtra setup
-│       ├── Model.swift             # Data models mapping Highlightly API responses
-│       ├── Network.swift           # Asynchronous API fetcher and rate-limit parser
-│       ├── View.swift              # Custom SwiftUI dropdown window card UI
-│       ├── Config.example.swift    # API credentials template
-│       └── Config.swift            # Private API credentials (Git ignored)
-├── Tests/                          # Unit tests
-├── Package.swift                   # Swift Package Manager configuration
-├── run.sh                          # Compilation helper and runner script
-└── README.md                       # Premium documentation
+│       ├── cricket_score_widget.swift  # App entry point, Settings view, and Dropdown card UI
+│       ├── Models.swift                # Innings/Match models, parsing helpers, and Chase/Hero math
+│       ├── MatchService.swift          # Polling coordinator, settings observer, and sleep/battery watchers
+│       ├── MatchSelector.swift         # Priority selector (manually selected vs. favorite team vs. live first)
+│       ├── APIClient.swift             # Asynchronous API fetcher and rate-limit parser
+│       ├── Config.example.swift        # API credentials template
+│       └── Config.swift                # Private API credentials (Git ignored)
+├── Tests/                              # Unit tests
+├── Package.swift                       # Swift Package Manager configuration
+├── run.sh                              # Compilation helper and runner script
+└── README.md                           # Premium documentation
 ```
 
 ---
@@ -78,11 +88,6 @@ Duplicate the configuration template:
 ```bash
 cp "Sources/cricket score widget/Config.example.swift" "Sources/cricket score widget/Config.swift"
 ```
-Open `Sources/cricket score widget/Config.swift` in your text editor:
-- Paste your API key into `highlightlyAPIKey`.
-- **If using RapidAPI**: Set `useRapidAPI = true` and ensure `apiBaseURL` is set to `"https://cricket-highlights-api.p.rapidapi.com"`.
-- **If using Highlightly Direct**: Leave `useRapidAPI = false` and ensure `apiBaseURL` is set to `"https://cricket.highlightly.net"`.
-
 *(Note: `Config.swift` is Git ignored to ensure your credentials are never pushed to public repositories).*
 
 ### 4. Compile and Run
@@ -96,5 +101,6 @@ chmod +x run.sh
 
 ## ⚙️ How to Manage the App
 
-- **To Refresh**: The widget refreshes automatically every 2 minutes. You can trigger an instant update by opening the dropdown and clicking **Refresh now**.
+- **To Open Settings**: Click the menu bar widget to expand the dropdown and click **Settings...** (or focus on the app and press `Command + ,`).
+- **To Refresh**: The widget refreshes automatically based on your configured poll interval. You can trigger an instant update by opening the dropdown and clicking **Refresh**.
 - **To Quit**: Click the menu bar widget to open the dropdown and click the **Quit** button (or press `Command + Q` while the dropdown window is focused).
