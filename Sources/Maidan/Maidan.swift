@@ -3,7 +3,6 @@ import AppKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Programmatically hide the Dock icon so the app runs purely in the menu bar.
         NSApp.setActivationPolicy(.accessory)
     }
 }
@@ -11,24 +10,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct MaidanApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    
-    // Instantiate the polling service to fetch and manage live match data.
     @State private var matchService = MatchService()
     
     var body: some Scene {
         MenuBarExtra {
             DropdownView(matchService: matchService)
         } label: {
-            MenuBarIconView()
+            HStack(spacing: 4) {
+                MenuBarIconView()
+                Text(matchService.menuBarTitle)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+            }
         }
         .menuBarExtraStyle(.window)
-        
-        Window("Maidan", id: "maidan-dashboard") {
-            DropdownView(matchService: matchService)
-                .frame(minWidth: 365, minHeight: 560)
-        }
-        .windowResizability(.contentSize)
-        
+
         // Phase 3: The Settings window scene
         Settings {
             SettingsView()
