@@ -375,6 +375,8 @@ struct DetailedInfo: Codable {
     
     let activeBatsmen: [ActiveBatsman]
     let activeBowlers: [ActiveBowler]
+    let topBatsmen: [ActiveBatsman]
+    let topBowlers: [ActiveBowler]
 }
 
 struct ActiveBatsman: Codable, Identifiable {
@@ -532,6 +534,9 @@ struct APIDetailedMatch: Decodable {
     let forecast: APIForecast?
     let predictions: APIPredictions?
     let inplayData: APIInPlayData?
+    let statistics: [APITeamMatchStatistics]?
+    let bestBatsmen: [APIBestPlayerGroup]?
+    let bestBowlers: [APIBestPlayerGroup]?
 }
 
 struct APIVenue: Decodable {
@@ -566,6 +571,40 @@ struct APIInPlayData: Decodable {
     let batsmen: [APIInPlayBatsman]?
 }
 
+struct APITeamMatchStatistics: Decodable {
+    let team: APIStatisticsTeam?
+}
+
+struct APIStatisticsTeam: Decodable {
+    let name: String?
+    let abbreviation: String?
+    let logo: String?
+    let inningBatsmen: [APIInningBatsman]?
+    let inningBowlers: [APIInningBowler]?
+}
+
+struct APIInningBatsman: Decodable {
+    let runs: Int?
+    let balls: Int?
+    let battingStrikeRate: Double?
+    let player: APIPlayerInfo?
+}
+
+struct APIInningBowler: Decodable {
+    let overs: Double?
+    let balls: Int?
+    let wickets: Int?
+    let economy: Double?
+    let runsConceded: Int?
+    let concededRuns: Int?
+    let player: APIPlayerInfo?
+}
+
+struct APIBestPlayerGroup: Decodable {
+    let team: APITeam?
+    let players: [APIPlayerInfo]?
+}
+
 struct APIInPlayBowler: Decodable {
     let player: APIPlayerInfo?
     let team: APITeam?
@@ -587,6 +626,7 @@ struct APIPlayerStats: Decodable {
     let fours: Int?
     let sixes: Int?
     let strikeRate: Double?
+    let battingStrikeRate: Double?
     
     let overs: Double?
     let wickets: Int?
@@ -595,6 +635,7 @@ struct APIPlayerStats: Decodable {
     
     enum CodingKeys: String, CodingKey {
         case runs, balls, fours, sixes, strikeRate
+        case battingStrikeRate
         case overs, wickets, economy
         case runsConceded
         case concededRuns
@@ -607,6 +648,7 @@ struct APIPlayerStats: Decodable {
         self.fours = try container.decodeIfPresent(Int.self, forKey: .fours)
         self.sixes = try container.decodeIfPresent(Int.self, forKey: .sixes)
         self.strikeRate = try container.decodeIfPresent(Double.self, forKey: .strikeRate)
+        self.battingStrikeRate = try container.decodeIfPresent(Double.self, forKey: .battingStrikeRate)
         self.overs = try container.decodeIfPresent(Double.self, forKey: .overs)
         self.wickets = try container.decodeIfPresent(Int.self, forKey: .wickets)
         self.economy = try container.decodeIfPresent(Double.self, forKey: .economy)
@@ -671,6 +713,65 @@ extension APIDetailedMatch {
                 }
             }
         }
+
+        var topBatsmen: [ActiveBatsman] = []
+        var topBowlers: [ActiveBowler] = []
+        if let statistics = statistics {
+            for teamStats in statistics {
+                let battingTeamAbbr = teamStats.team?.abbreviation ?? ""
+
+                if let inningBatsmen = teamStats.team?.inningBatsmen {
+                    for batsman in inningBatsmen {
+                        guard let player = batsman.player else { continue }
+                        guard let runs = batsman.runs, let balls = batsman.balls else { continue }
+                        let strikeRate = batsman.battingStrikeRate ??
+                            player.statistics?.strikeRate ??
+                            player.statistics?.battingStrikeRate ??
+                            0.0
+
+                        topBatsmen.append(ActiveBatsman(
+                            name: player.name,
+                            teamAbbreviation: battingTeamAbbr,
+                            runs: runs,
+                            balls: balls,
+                            strikeRate: strikeRate
+                        ))
+                    }
+                }
+
+                if let inningBowlers = teamStats.team?.inningBowlers {
+                    let bowlingTeamAbbr: String
+                    if battingTeamAbbr.caseInsensitiveCompare(homeTeam.abbreviation) == .orderedSame {
+                        bowlingTeamAbbr = awayTeam.abbreviation
+                    } else if battingTeamAbbr.caseInsensitiveCompare(awayTeam.abbreviation) == .orderedSame {
+                        bowlingTeamAbbr = homeTeam.abbreviation
+                    } else {
+                        bowlingTeamAbbr = ""
+                    }
+
+                    for bowler in inningBowlers {
+                        guard let player = bowler.player else { continue }
+                        let balls = bowler.balls ?? player.statistics?.balls
+                        let overs = bowler.overs ?? balls.map(Self.oversFromBalls) ?? 0.0
+                        let wickets = bowler.wickets ?? player.statistics?.wickets ?? 0
+                        let runs = bowler.runsConceded ??
+                            bowler.concededRuns ??
+                            player.statistics?.runsConceded ??
+                            0
+                        let economy = bowler.economy ?? player.statistics?.economy ?? 0.0
+
+                        topBowlers.append(ActiveBowler(
+                            name: player.name,
+                            teamAbbreviation: bowlingTeamAbbr,
+                            overs: overs,
+                            wickets: wickets,
+                            runsConceded: runs,
+                            economy: economy
+                        ))
+                    }
+                }
+            }
+        }
         
         return DetailedInfo(
             venueName: venueName,
@@ -681,7 +782,13 @@ extension APIDetailedMatch {
             drawWinProb: drawWin,
             awayWinProb: awayWin,
             activeBatsmen: domainBatsmen,
-            activeBowlers: domainBowlers
+            activeBowlers: domainBowlers,
+            topBatsmen: topBatsmen,
+            topBowlers: topBowlers
         )
+    }
+
+    private static func oversFromBalls(_ balls: Int) -> Double {
+        Double(balls / 6) + Double(balls % 6) / 10.0
     }
 }

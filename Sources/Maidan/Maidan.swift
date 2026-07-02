@@ -401,102 +401,28 @@ struct DropdownView: View {
                     
                     Divider()
                     
-                    // Scores for both teams
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(match.innings, id: \.teamShortName) { innings in
-                            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Text(innings.teamShortName)
-                                    .font(.system(.body, design: .monospaced))
-                                    .fontWeight(.bold)
-                                    .frame(width: 55, alignment: .leading)
-                                
-                                Text(innings.scoreText)
-                                    .font(.body)
-                                
-                                if let info = innings.infoText, !info.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text("(\(info))")
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                        }
-                    }
+                    selectedMatchScorePanel(for: match)
                     
-                    // Projected Score (Phase 10)
-                    if let projected = match.projectedScoreString {
-                        Text(projected)
-                            .font(.system(size: 11, weight: .medium, design: .rounded))
-                            .foregroundColor(.secondary)
-                            .padding(.top, 2)
-                    }
-                    
-                    // CRR vs RRR comparison (Phase 10)
-                    if let crr = match.currentRunRate, let rrr = match.requiredRunRate {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack(spacing: 8) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    HStack {
-                                        Text("Current RR")
-                                            .font(.system(size: 9, weight: .medium))
-                                            .foregroundColor(.secondary)
-                                        Spacer()
-                                        Text(String(format: "%.2f", crr))
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(.green)
-                                    }
-                                    ProgressView(value: min(crr, 15.0), total: 15.0)
-                                        .progressViewStyle(.linear)
-                                        .tint(.green)
-                                        .scaleEffect(x: 1, y: 0.5, anchor: .center)
-                                }
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    HStack {
-                                        Text("Required RR")
-                                            .font(.system(size: 9, weight: .medium))
-                                            .foregroundColor(.secondary)
-                                        Spacer()
-                                        Text(String(format: "%.2f", rrr))
-                                            .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(crr >= rrr ? .green : .orange)
-                                    }
-                                    ProgressView(value: min(rrr, 15.0), total: 15.0)
-                                        .progressViewStyle(.linear)
-                                        .tint(crr >= rrr ? .green : .orange)
-                                        .scaleEffect(x: 1, y: 0.5, anchor: .center)
-                                }
-                            }
-                        }
-                        .padding(.top, 4)
-                    }
-                    
-                    // Hero Number Block (Chase status, CRR, or completed report)
-                    Text(match.heroNumberString)
-                        .font(.system(.body, design: .rounded))
-                        .fontWeight(.bold)
-                        .foregroundColor(matchAccent)
-                        .padding(.vertical, 6)
-                        .padding(.horizontal, 10)
-                        .background(matchAccent.opacity(0.11))
-                        .cornerRadius(6)
-                        .padding(.top, 4)
-                    
-                    // Status Line
-                    Text(match.statusText)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .italic()
-                        .padding(.top, 2)
-                    
-                    // Phase 9: Live Crease Section (Active Batters & Bowler)
-                    if let details = match.detailedInfo, (!details.activeBatsmen.isEmpty || !details.activeBowlers.isEmpty) {
+                    // Phase 9: Live crease / final top performers section
+                    if let details = match.detailedInfo {
+                        let batsmen = battersForPlayerCard(match: match, details: details)
+                        let bowlers = bowlersForPlayerCard(match: match, details: details)
+                        if !batsmen.isEmpty || !bowlers.isEmpty {
                         VStack(alignment: .leading, spacing: 5) {
-                            // Active Batsmen
-                            ForEach(details.activeBatsmen) { batsman in
+                            if match.state == .finished {
+                                Text("Top performers")
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundColor(.secondary)
+                                    .textCase(.uppercase)
+                            }
+
+                            ForEach(batsmen) { batsman in
                                 HStack(spacing: 6) {
                                     Image(systemName: "cricket.ball")
                                         .foregroundColor(.secondary)
                                         .font(.system(size: 10))
+
+                                    teamBadge(batsman.teamAbbreviation)
                                     
                                     Text(batsman.name)
                                         .font(.subheadline)
@@ -505,28 +431,29 @@ struct DropdownView: View {
                                     
                                     Spacer()
                                     
-                                    Text("\(batsman.runs) (\(batsman.balls))")
+                                    Text(batsman.balls > 0 ? "\(batsman.runs) (\(batsman.balls))" : "\(batsman.runs)")
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
                                     
-                                    Text("SR: \(Int(batsman.strikeRate))")
+                                    Text(batsman.strikeRate > 0 ? "SR: \(Int(batsman.strikeRate))" : "SR: --")
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
                                         .frame(width: 45, alignment: .trailing)
                                 }
                             }
                             
-                            if !details.activeBatsmen.isEmpty && !details.activeBowlers.isEmpty {
+                            if !batsmen.isEmpty && !bowlers.isEmpty {
                                 Divider()
                                     .opacity(0.4)
                             }
                             
-                            // Active Bowlers
-                            ForEach(details.activeBowlers) { bowler in
+                            ForEach(bowlers) { bowler in
                                 HStack(spacing: 6) {
                                     Image(systemName: "figure.cricket")
                                         .foregroundColor(.secondary)
                                         .font(.system(size: 10))
+
+                                    teamBadge(bowler.teamAbbreviation)
                                     
                                     Text(bowler.name)
                                         .font(.subheadline)
@@ -538,7 +465,7 @@ struct DropdownView: View {
                                         .font(.subheadline)
                                         .fontWeight(.semibold)
                                     
-                                    Text("\(String(format: "%.1f", bowler.overs)) ov")
+                                    Text(bowler.overs > 0 ? "\(String(format: "%.1f", bowler.overs)) ov" : "-- ov")
                                         .font(.system(size: 10))
                                         .foregroundColor(.secondary)
                                         .frame(width: 45, alignment: .trailing)
@@ -549,10 +476,12 @@ struct DropdownView: View {
                         .background(Color.primary.opacity(0.04))
                         .cornerRadius(6)
                         .padding(.top, 4)
+                        }
                     }
                     
                     // Phase 9: Live Win Probability Bar
-                    if let details = match.detailedInfo,
+                    if match.state != .finished,
+                       let details = match.detailedInfo,
                        let homeProbStr = details.homeWinProb,
                        let awayProbStr = details.awayWinProb,
                        let homeProb = parsePercent(homeProbStr),
@@ -863,6 +792,214 @@ struct DropdownView: View {
     
     private var emptyTodayMessage: String {
         matchService.hasAPIKey ? "No fixtures found for today" : "API key required"
+    }
+
+    private func teamBadge(_ abbreviation: String) -> some View {
+        Text(abbreviation.isEmpty ? "TEAM" : abbreviation)
+            .font(.system(size: 9, weight: .bold, design: .rounded))
+            .foregroundColor(matchAccent)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .frame(width: 42, alignment: .center)
+            .padding(.vertical, 2)
+            .background(matchAccent.opacity(0.12))
+            .cornerRadius(4)
+    }
+
+    private func battersForPlayerCard(match: Match, details: DetailedInfo) -> [ActiveBatsman] {
+        guard match.state == .finished else {
+            return details.activeBatsmen
+        }
+
+        let candidates = details.topBatsmen
+        let sorted = candidates.sorted {
+            if $0.runs != $1.runs { return $0.runs > $1.runs }
+            if $0.strikeRate != $1.strikeRate { return $0.strikeRate > $1.strikeRate }
+            return $0.balls < $1.balls
+        }
+
+        return bestOnePerTeam(
+            teamOrder: match.innings.map(\.teamShortName),
+            candidates: sorted,
+            team: { $0.teamAbbreviation },
+            id: { $0.name },
+            limit: 2
+        )
+    }
+
+    private func bowlersForPlayerCard(match: Match, details: DetailedInfo) -> [ActiveBowler] {
+        guard match.state == .finished else {
+            return details.activeBowlers
+        }
+
+        let candidates = details.topBowlers
+        let sorted = candidates.sorted {
+            if $0.wickets != $1.wickets { return $0.wickets > $1.wickets }
+            if $0.runsConceded != $1.runsConceded { return $0.runsConceded < $1.runsConceded }
+            return $0.economy < $1.economy
+        }
+
+        return bestOnePerTeam(
+            teamOrder: match.innings.map(\.teamShortName),
+            candidates: sorted,
+            team: { $0.teamAbbreviation },
+            id: { $0.name },
+            limit: 2
+        )
+    }
+
+    private func bestOnePerTeam<T>(
+        teamOrder: [String],
+        candidates: [T],
+        team: (T) -> String,
+        id: (T) -> String,
+        limit: Int
+    ) -> [T] {
+        var selected: [T] = []
+        var selectedIDs = Set<String>()
+
+        for teamAbbreviation in teamOrder {
+            if let candidate = candidates.first(where: {
+                team($0).caseInsensitiveCompare(teamAbbreviation) == .orderedSame &&
+                !selectedIDs.contains(id($0))
+            }) {
+                selected.append(candidate)
+                selectedIDs.insert(id(candidate))
+            }
+        }
+
+        for candidate in candidates where selected.count < limit {
+            guard !selectedIDs.contains(id(candidate)) else { continue }
+            selected.append(candidate)
+            selectedIDs.insert(id(candidate))
+        }
+
+        return Array(selected.prefix(limit))
+    }
+
+    @ViewBuilder
+    private func selectedMatchScorePanel(for match: Match) -> some View {
+        if match.state == .finished {
+            finalScorecard(for: match)
+        } else {
+            liveScorePanel(for: match)
+        }
+    }
+
+    private func liveScorePanel(for match: Match) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(match.innings, id: \.teamShortName) { innings in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(innings.teamShortName)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.bold)
+                        .frame(width: 55, alignment: .leading)
+
+                    Text(innings.scoreText)
+                        .font(.body)
+
+                    if let info = innings.infoText, !info.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("(\(info))")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            if let projected = match.projectedScoreString {
+                Text(projected)
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 2)
+            }
+
+            if let crr = match.currentRunRate, let rrr = match.requiredRunRate {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        runRateBar(title: "Current RR", value: crr, tint: .green)
+                        runRateBar(title: "Required RR", value: rrr, tint: crr >= rrr ? .green : .orange)
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            Text(match.heroNumberString)
+                .font(.system(.body, design: .rounded))
+                .fontWeight(.bold)
+                .foregroundColor(matchAccent)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .background(matchAccent.opacity(0.11))
+                .cornerRadius(6)
+                .padding(.top, 4)
+
+            Text(match.statusText)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .italic()
+                .padding(.top, 2)
+        }
+    }
+
+    private func finalScorecard(for match: Match) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Final scorecard")
+                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .foregroundColor(.secondary)
+                .textCase(.uppercase)
+
+            ForEach(match.innings, id: \.teamShortName) { innings in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(innings.teamShortName)
+                        .font(.system(.body, design: .monospaced))
+                        .fontWeight(.bold)
+                        .frame(width: 58, alignment: .leading)
+
+                    Text(innings.scoreText)
+                        .font(.title3)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.primary)
+
+                    if let info = innings.infoText, !info.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("(\(info))")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Text(match.statusText)
+                .font(.system(.body, design: .rounded))
+                .fontWeight(.bold)
+                .foregroundColor(matchAccent)
+                .lineLimit(2)
+                .padding(.vertical, 7)
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(matchAccent.opacity(0.11))
+                .cornerRadius(6)
+                .padding(.top, 4)
+        }
+    }
+
+    private func runRateBar(title: String, value: Double, tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(String(format: "%.2f", value))
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundColor(tint)
+            }
+            ProgressView(value: min(max(value, 0), 15.0), total: 15.0)
+                .progressViewStyle(.linear)
+                .tint(tint)
+                .scaleEffect(x: 1, y: 0.5, anchor: .center)
+        }
     }
     
     @ViewBuilder

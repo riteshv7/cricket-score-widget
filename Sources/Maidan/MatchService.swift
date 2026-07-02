@@ -317,7 +317,8 @@ class MatchService {
         do {
             let result = try await client.fetchMatchesForToday()
             
-            // Lazy detailed fetch for the selected active match to conserve quota
+            // Lazy detailed fetch for the selected match to conserve quota.
+            // Live matches use it for active players; finished matches use it for top performers.
             let selectedId = currentSelectedMatchID()
             let favTeam = currentFavoriteTeam()
             
@@ -331,9 +332,11 @@ class MatchService {
             
             var detailedInfo: DetailedInfo? = nil
             if let selectedMatch = selectionResult.selectedMatch {
-                let isLiveOrOnBreak = selectedMatch.state == .live || selectedMatch.state == .onBreak
+                let shouldFetchDetail = selectedMatch.state == .live ||
+                    selectedMatch.state == .onBreak ||
+                    selectedMatch.state == .finished
                 
-                if isLiveOrOnBreak {
+                if shouldFetchDetail {
                     do {
                         detailedInfo = try await client.fetchMatchDetail(id: selectedMatch.id)
                     } catch {
@@ -550,6 +553,10 @@ class MatchService {
             return style == "minimal" ? "🏏" : "No live match"
         }
         
+        if match.state == .finished, style != "minimal" {
+            return finishedMenuBarScoreboard(for: match)
+        }
+
         switch style {
         case "minimal":
             return match.state == .live ? "🏏 🟢" : "🏏"
@@ -560,6 +567,18 @@ class MatchService {
         default:
             return match.menuBarTitleString
         }
+    }
+
+    private func finishedMenuBarScoreboard(for match: Match) -> String {
+        let scoredInnings = match.innings.prefix(2).map { innings in
+            "\(innings.teamShortName) \(innings.scoreText)"
+        }
+
+        guard !scoredInnings.isEmpty else {
+            return match.statusText
+        }
+
+        return scoredInnings.joined(separator: " · ")
     }
     
     /// Static helper to check if a match is an IPL match or involving IPL franchises
