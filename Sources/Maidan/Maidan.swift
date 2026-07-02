@@ -23,6 +23,12 @@ struct MaidanApp: App {
         }
         .menuBarExtraStyle(.window)
         
+        Window("Maidan", id: "maidan-dashboard") {
+            DropdownView(matchService: matchService)
+                .frame(minWidth: 365, minHeight: 560)
+        }
+        .windowResizability(.contentSize)
+        
         // Phase 3: The Settings window scene
         Settings {
             SettingsView()
