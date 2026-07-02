@@ -11,8 +11,10 @@ class MatchService {
     var currentMatch: Match? = nil
     var liveMatches: [Match] = []
     var allMatches: [Match] = []
+    var todaysMatches: [Match] = []
     var rateLimitRemaining: Int? = nil
     var isFetching: Bool = false
+    var lastUpdatedAt: Date? = nil
     
     // Track the active poll interval so we can print and adapt in the UI
     var activePollInterval: TimeInterval = 120.0
@@ -63,6 +65,25 @@ class MatchService {
     var hasAPIKey: Bool {
         let key = currentApiKey()
         return !key.isEmpty && key != "PASTE_YOUR_KEY_HERE"
+    }
+    
+    var activeFilterLabel: String {
+        switch UserDefaults.standard.string(forKey: "matchFilterMode") ?? "major" {
+        case "all":
+            return "All"
+        case "ipl":
+            return "IPL"
+        case "intl":
+            return "International"
+        case "major":
+            fallthrough
+        default:
+            return "Major"
+        }
+    }
+    
+    var hasActiveMatchFilter: Bool {
+        (UserDefaults.standard.string(forKey: "matchFilterMode") ?? "major") != "all"
     }
     
     /// Helper to read the active poll interval
@@ -142,6 +163,7 @@ class MatchService {
         guard hasAPIKey else {
             self.currentMatch = nil
             self.liveMatches = []
+            self.todaysMatches = []
             self.menuBarTitle = "Set API key in Settings"
             return
         }
@@ -280,6 +302,7 @@ class MatchService {
                 self.currentMatch = nil
                 self.liveMatches = []
                 self.allMatches = []
+                self.todaysMatches = []
                 self.menuBarTitle = "Set API key in Settings"
             }
             return
@@ -292,15 +315,16 @@ class MatchService {
         }
         
         do {
-            let result = try await client.fetchMatches()
+            let result = try await client.fetchMatchesForToday()
             
             // Lazy detailed fetch for the selected active match to conserve quota
             let selectedId = currentSelectedMatchID()
             let favTeam = currentFavoriteTeam()
             
             let apiMatchesToUse = filterMatches(result.rawMatches)
+            let selectionMatches = result.rawMatches.contains(where: { $0.id == selectedId }) ? result.rawMatches : apiMatchesToUse
             let selectionResult = MatchSelector.selectMatch(
-                from: apiMatchesToUse,
+                from: selectionMatches,
                 selectedMatchID: selectedId,
                 favoriteTeam: favTeam
             )
@@ -324,6 +348,7 @@ class MatchService {
             
             await MainActor.run {
                 self.isFetching = false
+                self.lastUpdatedAt = Date()
                 if self.currentMatch == nil {
                     self.menuBarTitle = "—"
                 }
@@ -337,15 +362,22 @@ class MatchService {
         
         let apiMatchesToUse = filterMatches(rawMatches)
         
-        let liveAPIMatches = apiMatchesToUse.filter { MatchSelector.classify($0.state.description) == .live }
+        let liveAPIMatches = apiMatchesToUse.filter {
+            let state = MatchSelector.classify($0.state.description)
+            return state == .live || state == .onBreak
+        }
         var domainLiveMatches = liveAPIMatches.map { $0.toDomain() }
         var domainAllMatches = apiMatchesToUse.map { $0.toDomain() } // respect the active filter in dropdown list
+        let domainTodaysMatches = rawMatches
+            .sorted { $0.startTime < $1.startTime }
+            .map { $0.toDomain() }
         
         let selectedId = currentSelectedMatchID()
         let favTeam = currentFavoriteTeam()
+        let selectionMatches = rawMatches.contains(where: { $0.id == selectedId }) ? rawMatches : apiMatchesToUse
         
         let selectionResult = MatchSelector.selectMatch(
-            from: apiMatchesToUse,
+            from: selectionMatches,
             selectedMatchID: selectedId,
             favoriteTeam: favTeam
         )
@@ -486,7 +518,9 @@ class MatchService {
             }
             self.liveMatches = domainLiveMatches
             self.allMatches = domainAllMatches
+            self.todaysMatches = domainTodaysMatches
             self.currentMatch = newMatch
+            self.lastUpdatedAt = Date()
             
             if selectionResult.clearedStaleSelection {
                 UserDefaults.standard.set("", forKey: "selectedMatchID")

@@ -90,6 +90,47 @@ class APIClient {
         )
     }
     
+    func fetchMatchesForToday() async throws -> FetchResult {
+        let today = Date()
+        let primary = try await fetchMatches(for: today)
+        
+        guard primary.rawMatches.isEmpty else {
+            return primary
+        }
+        
+        let calendar = Calendar.current
+        var rawMatchesByID: [String: APIMatch] = [:]
+        var rateLimitRemaining = primary.rateLimitRemaining
+        
+        for match in primary.rawMatches {
+            rawMatchesByID[match.id] = match
+        }
+        
+        for offset in [-1, 1] {
+            guard let date = calendar.date(byAdding: .day, value: offset, to: today) else {
+                continue
+            }
+            
+            do {
+                let fallback = try await fetchMatches(for: date)
+                rateLimitRemaining = fallback.rateLimitRemaining ?? rateLimitRemaining
+                
+                for match in fallback.rawMatches where match.occurs(onLocalDay: today, calendar: calendar) {
+                    rawMatchesByID[match.id] = match
+                }
+            } catch {
+                print("APIClient: Fallback fixture lookup for offset \(offset) failed: \(error)")
+            }
+        }
+        
+        let rawMatches = rawMatchesByID.values.sorted { $0.startTime < $1.startTime }
+        return FetchResult(
+            matches: rawMatches.map { $0.toDomain() },
+            rawMatches: rawMatches,
+            rateLimitRemaining: rateLimitRemaining
+        )
+    }
+    
     func fetchMatchDetail(id: String) async throws -> DetailedInfo {
         // 1. Build URL
         guard var urlComponents = URLComponents(string: Config.apiBaseURL) else {

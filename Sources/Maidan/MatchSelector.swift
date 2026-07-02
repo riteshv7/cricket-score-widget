@@ -2,8 +2,8 @@ import Foundation
 
 class MatchSelector {
     /// Selects the match to display based on Phase 6 rules:
-    /// 1. If a user-selected match ID is set and still live, return it.
-    /// 2. If no valid user selection (or user selection ended/dropped off), perform auto-select:
+    /// 1. If a user-selected match ID is set and still present in today's feed, return it.
+    /// 2. If no valid user selection (or user selection dropped off), perform auto-select:
     ///    A. If a favorite team is playing live, select that match.
     ///    B. Otherwise, fall back to the live-with-score -> live-without-score -> most recent finished rule.
     /// 3. Returns the selected Match and whether the stale user selection should be cleared in UserDefaults.
@@ -12,19 +12,15 @@ class MatchSelector {
         selectedMatchID: String,
         favoriteTeam: String
     ) -> (selectedMatch: Match?, clearedStaleSelection: Bool) {
-        // 1. Get all active matches (live or on break)
-        let activeMatches = apiMatches.filter { classify($0.state.description) == .live || classify($0.state.description) == .onBreak }
-        
-        // 2. If the user has a selected match ID, check if it is still active
+        // 1. If the user has a selected match ID, show that match while it remains in today's feed.
         if !selectedMatchID.isEmpty {
-            if let userMatch = activeMatches.first(where: { $0.id == selectedMatchID }) {
+            if let userMatch = apiMatches.first(where: { $0.id == selectedMatchID }) {
                 return (userMatch.toDomain(), false)
             }
-            // The selected match is either no longer active or has dropped off.
-            // We will clear the stale selection and fall back to auto-select.
+            // The selected match has dropped off today's feed. Clear it and fall back to auto-select.
         }
         
-        // 3. Auto-select:
+        // 2. Auto-select:
         let liveMatches = apiMatches.filter { classify($0.state.description) == .live }
         
         // A. Check if a favorite team is playing live (supports multiple comma-separated teams)

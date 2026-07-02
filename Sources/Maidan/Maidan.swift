@@ -285,7 +285,7 @@ struct DropdownView: View {
     @AppStorage("selectedMatchID") private var selectedMatchID: String = ""
     
     // Additive: Expand/collapse state for Today's Matches
-    @State private var isTodayMatchesExpanded: Bool = false
+    @State private var isTodayMatchesExpanded: Bool = true
     
     // New state to toggle inline Settings panel
     @State private var showSettings: Bool = false
@@ -297,9 +297,10 @@ struct DropdownView: View {
     @State private var hoveredMatchID: String? = nil
     
     var body: some View {
-        let liveMatchesList = matchService.allMatches.filter { $0.state == .live || $0.state == .onBreak }
-        let finishedMatchesList = matchService.allMatches.filter { $0.state == .finished }
-        let upcomingMatchesList = matchService.allMatches.filter { $0.state == .scheduled }
+        let todaysMatchesList = matchService.todaysMatches
+        let liveMatchesList = todaysMatchesList.filter { $0.state == .live || $0.state == .onBreak }
+        let finishedMatchesList = todaysMatchesList.filter { $0.state == .finished }
+        let upcomingMatchesList = todaysMatchesList.filter { $0.state == .scheduled }
         
         return VStack(alignment: .leading, spacing: 12) {
             if showSettings {
@@ -364,11 +365,11 @@ struct DropdownView: View {
                                 .font(.headline)
                                 .fontWeight(.semibold)
                                 .lineLimit(2)
-                                .foregroundColor(.blue) // Highlight as clickable
+                                .foregroundColor(matchAccent)
                             
                             Image(systemName: "arrow.up.forward.app")
                                 .font(.caption)
-                                .foregroundColor(.blue)
+                                .foregroundColor(matchAccent)
                             
                             Spacer()
                             
@@ -455,10 +456,10 @@ struct DropdownView: View {
                     Text(match.heroNumberString)
                         .font(.system(.body, design: .rounded))
                         .fontWeight(.bold)
-                        .foregroundColor(.blue)
+                        .foregroundColor(matchAccent)
                         .padding(.vertical, 6)
                         .padding(.horizontal, 10)
-                        .background(Color.blue.opacity(0.1))
+                        .background(matchAccent.opacity(0.11))
                         .cornerRadius(6)
                         .padding(.top, 4)
                     
@@ -655,10 +656,28 @@ struct DropdownView: View {
                         }
                     }) {
                         HStack {
-                            Text("Today's Matches (\(matchService.allMatches.count))")
-                                .font(.headline)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.primary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text("Today")
+                                        .font(.headline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                    
+                                    Text("\(todaysMatchesList.count)")
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .foregroundColor(matchAccent)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(matchAccent.opacity(0.12))
+                                        .cornerRadius(5)
+                                }
+                                
+                                if matchService.hasActiveMatchFilter {
+                                    Text("Auto-pick: \(matchService.activeFilterLabel) · \(matchService.allMatches.count) prioritized")
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                             
                             Spacer()
                             
@@ -672,11 +691,8 @@ struct DropdownView: View {
                     .buttonStyle(.plain)
                     
                     if isTodayMatchesExpanded {
-                        if matchService.allMatches.isEmpty {
-                            Text("No matches scheduled for today.")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .padding(.vertical, 8)
+                        if todaysMatchesList.isEmpty {
+                            todayEmptyState
                         } else {
                             // Fixed height ScrollView to prevent layout collapsing in accessory Extra window
                             ScrollView {
@@ -698,7 +714,7 @@ struct DropdownView: View {
                                 }
                                 .padding(.trailing, 8)
                             }
-                            .frame(height: 180)
+                            .frame(height: max(110, min(CGFloat(todaysMatchesList.count * 54), 220)))
                         }
                     }
                 }
@@ -746,7 +762,7 @@ struct DropdownView: View {
                     }
                     .disabled(matchService.isFetching || !matchService.hasAPIKey)
                     .buttonStyle(.borderedProminent)
-                    .tint(.blue)
+                    .tint(matchAccent)
                     
                     // Settings Button (Toggles inline Settings panel)
                     Button("Settings…") {
@@ -766,7 +782,7 @@ struct DropdownView: View {
             }
         }
         .padding(16)
-        .frame(width: 345)
+        .frame(width: 365)
         .focusable()
         .focused($isFocused)
         .focusEffectDisabled()
@@ -788,6 +804,49 @@ struct DropdownView: View {
     
     // MARK: - Match Section Helper
     
+    private var matchAccent: Color {
+        Color(red: 0.16, green: 0.43, blue: 0.28)
+    }
+    
+    @ViewBuilder
+    private var todayEmptyState: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                if matchService.isFetching {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: matchService.hasAPIKey ? "calendar.badge.clock" : "key.horizontal")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(matchAccent)
+                }
+                
+                Text(matchService.isFetching ? "Checking today’s fixtures" : emptyTodayMessage)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.primary)
+            }
+            
+            if !matchService.hasAPIKey {
+                Text("Add an API key in Settings.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else if !matchService.isFetching, let lastUpdatedAt = matchService.lastUpdatedAt {
+                Text("Last checked: \(lastUpdatedAt.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.035))
+        .cornerRadius(8)
+    }
+    
+    private var emptyTodayMessage: String {
+        matchService.hasAPIKey ? "No fixtures found for today" : "API key required"
+    }
+    
     @ViewBuilder
     private func matchSection(title: String, matches: [Match]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -798,64 +857,67 @@ struct DropdownView: View {
                 .padding(.bottom, 2)
             
             ForEach(matches) { match in
-                HStack(spacing: 8) {
-                    // Radio dot indicating selection
-                    Image(systemName: selectedMatchID == match.id ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(selectedMatchID == match.id ? .blue : .secondary)
-                        .font(.caption)
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            let homeAbbr = match.innings.first?.teamShortName ?? "T1"
-                            let awayAbbr = match.innings.last?.teamShortName ?? "T2"
+                Button(action: {
+                    selectedMatchID = match.id
+                }) {
+                    HStack(spacing: 9) {
+                        // Radio dot indicating selection
+                        Image(systemName: selectedMatchID == match.id ? "checkmark.circle.fill" : "circle")
+                            .foregroundColor(selectedMatchID == match.id ? matchAccent : .secondary)
+                            .font(.caption)
+                        
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                let homeAbbr = match.innings.first?.teamShortName ?? "T1"
+                                let awayAbbr = match.innings.last?.teamShortName ?? "T2"
+                                
+                                Text("\(homeAbbr) vs \(awayAbbr)")
+                                    .fontWeight(.semibold)
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                
+                                Text(match.format)
+                                    .font(.system(size: 8, weight: .bold, design: .rounded))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(matchAccent.opacity(0.12))
+                                    .foregroundColor(matchAccent)
+                                    .cornerRadius(4)
+                            }
                             
-                            Text("\(homeAbbr) vs \(awayAbbr)")
-                                .fontWeight(.semibold)
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                            
-                            Text(match.format)
-                                .font(.system(size: 8, weight: .bold))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.blue.opacity(0.12))
-                                .foregroundColor(.blue)
-                                .cornerRadius(3)
+                            // Context-based subtitle
+                            Group {
+                                if match.state == .live || match.state == .onBreak {
+                                    HStack(spacing: 5) {
+                                        Text(scoresString(for: match))
+                                        Circle()
+                                            .fill(Color.green)
+                                            .frame(width: 6, height: 6)
+                                    }
+                                } else if match.state == .finished {
+                                    Text("\(scoresString(for: match)) · \(match.statusText)")
+                                } else {
+                                    Text("Starts \(formatStartTime(match.startTime))")
+                                }
+                            }
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
                         }
                         
-                        // Context-based subtitle
-                        Group {
-                            if match.state == .live || match.state == .onBreak {
-                                HStack(spacing: 4) {
-                                    Text(scoresString(for: match))
-                                    Circle()
-                                        .fill(Color.green)
-                                        .frame(width: 6, height: 6)
-                                }
-                            } else if match.state == .finished {
-                                Text("\(scoresString(for: match)) · \(match.statusText)")
-                            } else {
-                                Text("Starts at \(formatStartTime(match.startTime))")
-                            }
-                        }
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                        Spacer()
                     }
-                    
-                    Spacer()
                 }
-                .padding(.vertical, 6)
+                .buttonStyle(.plain)
+                .padding(.vertical, 7)
                 .padding(.horizontal, 8)
                 .background(
-                    selectedMatchID == match.id ? Color.blue.opacity(0.08) :
+                    selectedMatchID == match.id ? matchAccent.opacity(0.09) :
                     (hoveredMatchID == match.id ? Color.primary.opacity(0.04) : Color.clear)
                 )
                 .cornerRadius(6)
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    selectedMatchID = match.id
-                }
                 .onHover { isHovering in
                     if isHovering {
                         hoveredMatchID = match.id
@@ -868,9 +930,9 @@ struct DropdownView: View {
     }
     
     private func cycleSelectedMatch(forward: Bool) {
-        let list = matchService.allMatches.filter { $0.state == .live || $0.state == .onBreak } +
-                   matchService.allMatches.filter { $0.state == .finished } +
-                   matchService.allMatches.filter { $0.state == .scheduled }
+        let list = matchService.todaysMatches.filter { $0.state == .live || $0.state == .onBreak } +
+                   matchService.todaysMatches.filter { $0.state == .finished } +
+                   matchService.todaysMatches.filter { $0.state == .scheduled }
         guard !list.isEmpty else { return }
         
         let currentIndex = list.firstIndex(where: { $0.id == selectedMatchID })

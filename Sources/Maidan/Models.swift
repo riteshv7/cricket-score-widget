@@ -411,6 +411,27 @@ struct APIMatch: Codable {
     let awayTeam: APITeam
     let league: APILeague?
     let state: APIMatchState
+    
+    func startDate() -> Date? {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        
+        if let date = fractionalFormatter.date(from: startTime) {
+            return date
+        }
+        
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: startTime)
+    }
+    
+    func occurs(onLocalDay date: Date, calendar: Calendar = .current) -> Bool {
+        guard let startDate = startDate() else {
+            return false
+        }
+        
+        return calendar.isDate(startDate, inSameDayAs: date)
+    }
 }
 
 struct APITeam: Codable {
