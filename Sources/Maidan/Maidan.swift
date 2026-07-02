@@ -19,12 +19,7 @@ struct MaidanApp: App {
         MenuBarExtra {
             DropdownView(matchService: matchService)
         } label: {
-            if let icon = NSImage(named: "MaidanFieldIcon") {
-                let _ = icon.isTemplate = true
-                Image(nsImage: icon)
-            } else {
-                Image(systemName: "cricket.ball.fill")
-            }
+            MenuBarIconView()
         }
         .menuBarExtraStyle(.window)
         
@@ -32,6 +27,27 @@ struct MaidanApp: App {
         Settings {
             SettingsView()
         }
+    }
+}
+
+struct MenuBarIconView: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .stroke(.primary, lineWidth: 1.6)
+                .frame(width: 18, height: 13)
+            
+            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                .fill(.primary)
+                .frame(width: 3, height: 8)
+            
+            Circle()
+                .fill(.primary)
+                .frame(width: 3.2, height: 3.2)
+                .offset(x: 6, y: -3.2)
+        }
+        .frame(width: 22, height: 18)
+        .accessibilityLabel("Maidan")
     }
 }
 
